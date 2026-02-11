@@ -1,4 +1,5 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
+# Updated with all API endpoints
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
