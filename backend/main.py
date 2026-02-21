@@ -1,15 +1,24 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
-# Updated with all API endpoints
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 import os
+from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="Indian Legal AI API", version="1.0.0")
+# Get CORS origins from environment variable
+cors_origins_str = os.getenv(
+    "CORS_ORIGINS",
+    "http://localhost:3000"
+)
 
-# CORS middleware
+# Split the comma-separated string into a list
+allowed_origins = [origin.strip() for origin in cors_origins_str.split(",")]
+
+# Add the specific Vercel preview URL explicitly
+allowed_origins.append("https://indian-legal-ai-frontend-y8gem6i2w-ashus-projects-918909e4.vercel.app")
+
+# Remove duplicates
+allowed_origins = list(set(allowed_origins))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://indian-legal-ai-frontend.vercel.app", "http://localhost:3000"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
