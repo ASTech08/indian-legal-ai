@@ -1,5 +1,11 @@
 import os
+from fastapi import FastAPI, HTTPException, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import openai
+
+# Initialize FastAPI app
+app = FastAPI(title="Indian Legal AI API")
 
 # Get CORS origins from environment variable
 cors_origins_str = os.getenv(
@@ -23,6 +29,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Configure OpenAI
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # Pydantic models
 class ChatRequest(BaseModel):
@@ -50,17 +59,38 @@ def health():
 def test():
     return {"message": "API is working!"}
 
-# Chat endpoint
+# Chat endpoint with OpenAI integration
 @app.post("/api/chat")
 async def chat(request: ChatRequest):
     try:
-        # For now, return a simple response
-        # TODO: Integrate with actual AI service
-        response_text = f"I received your question: '{request.message}'. This is a placeholder response. The AI integration will be added soon."
+        # Call OpenAI API
+        response = openai.chat.completions.create(
+            model="gpt-3.5-turbo",  # or "gpt-4" if you have access
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are an expert Indian legal AI assistant. You help users understand Indian laws, legal procedures, and provide guidance on legal matters. Always cite relevant sections of law when applicable. Be accurate, helpful, and professional."
+                },
+                {
+                    "role": "user",
+                    "content": request.message
+                }
+            ],
+            temperature=0.7,
+            max_tokens=1000
+        )
         
-        return {"response": response_text}
+        # Extract the AI response
+        ai_response = response.choices[0].message.content
+        
+        return {"response": ai_response}
+        
+    except openai.AuthenticationError:
+        raise HTTPException(status_code=500, detail="OpenAI API key is invalid or missing")
+    except openai.RateLimitError:
+        raise HTTPException(status_code=429, detail="OpenAI rate limit exceeded. Please try again later.")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 # Document analysis endpoint
 @app.post("/api/analyze-document")
@@ -69,11 +99,37 @@ async def analyze_document(file: UploadFile = File(...)):
         # Read file content
         content = await file.read()
         
-        # For now, return a simple analysis
-        # TODO: Integrate with actual document analysis service
-        analysis = f"Document '{file.filename}' uploaded successfully. Size: {len(content)} bytes. Document analysis will be implemented soon."
+        # Decode if it's a text file
+        try:
+            text_content = content.decode('utf-8')
+        except:
+            text_content = f"Binary file ({len(content)} bytes)"
         
-        return {"analysis": analysis}
+        # Use OpenAI to analyze the document
+        response = openai.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are an expert legal document analyzer for Indian law. Analyze the provided document and provide insights on legal issues, risks, and recommendations."
+                },
+                {
+                    "role": "user",
+                    "content": f"Please analyze this legal document:\n\n{text_content[:4000]}"  # Limit to avoid token limits
+                }
+            ],
+            temperature=0.5,
+            max_tokens=1500
+        )
+        
+        analysis = response.choices[0].message.content
+        
+        return {
+            "filename": file.filename,
+            "size": len(content),
+            "analysis": analysis
+        }
+        
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -81,26 +137,30 @@ async def analyze_document(file: UploadFile = File(...)):
 @app.post("/api/search-cases")
 async def search_cases(request: SearchRequest):
     try:
-        # For now, return sample cases
-        # TODO: Integrate with actual case law database
-        sample_cases = [
-            {
-                "title": "Sample Case 1 related to: " + request.query,
-                "court": "Supreme Court of India",
-                "date": "2024-01-15",
-                "summary": "This is a sample case result. The actual case law search will be integrated soon.",
-                "citation": "AIR 2024 SC 1234"
-            },
-            {
-                "title": "Sample Case 2 related to: " + request.query,
-                "court": "Delhi High Court",
-                "date": "2023-11-20",
-                "summary": "Another sample case for demonstration purposes.",
-                "citation": "2023 DHC 5678"
-            }
-        ]
+        # Use OpenAI to provide case law information
+        response = openai.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are an expert on Indian case law. When asked about legal cases, provide relevant landmark cases from Indian courts (Supreme Court, High Courts) with proper citations, facts, and legal principles established."
+                },
+                {
+                    "role": "user",
+                    "content": f"Find relevant Indian case law related to: {request.query}"
+                }
+            ],
+            temperature=0.5,
+            max_tokens=1500
+        )
         
-        return {"cases": sample_cases}
+        cases_info = response.choices[0].message.content
+        
+        return {
+            "query": request.query,
+            "results": cases_info
+        }
+        
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -108,25 +168,29 @@ async def search_cases(request: SearchRequest):
 @app.post("/api/generate-document")
 async def generate_document(request: DocumentRequest):
     try:
-        # For now, return a simple generated document
-        # TODO: Integrate with actual document generation service
-        document_text = f"""
-LEGAL DOCUMENT - {request.document_type.upper()}
-
-Generated by Indian Legal AI
-Date: 2024-02-11
-
-Document Type: {request.document_type}
-
-Details Provided:
-{request.details}
-
----
-NOTE: This is a placeholder document. The actual AI-powered document generation will be implemented soon.
-
-[Document content will be generated here based on the provided details]
-        """
+        # Use OpenAI to generate legal document
+        response = openai.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {
+                    "role": "system",
+                    "content": f"You are an expert Indian legal document drafter. Generate a professional {request.document_type} document following Indian legal standards and formats."
+                },
+                {
+                    "role": "user",
+                    "content": f"Generate a {request.document_type} with the following details:\n\n{request.details}"
+                }
+            ],
+            temperature=0.7,
+            max_tokens=2000
+        )
         
-        return {"document": document_text.strip()}
+        document_text = response.choices[0].message.content
+        
+        return {
+            "document_type": request.document_type,
+            "document": document_text
+        }
+        
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
